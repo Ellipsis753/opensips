@@ -212,7 +212,7 @@ int apply_cseq_op(struct sip_msg *msg,int val)
 		return -1;
 	}
 
-	LM_DBG("Message CSEQ translated from [%.*s] to [%.*s]\n",
+	LM_NOTICE("Message CSEQ translated from [%.*s] to [%.*s]\n",
 			((struct cseq_body *)msg->cseq->parsed)->number.len,
 			((struct cseq_body *)msg->cseq->parsed)->number.s,pkg_cseq.len,
 			pkg_cseq.s);
@@ -403,6 +403,16 @@ int uac_auth( struct sip_msg *msg, int algmask)
 				pkg_free(param.s);
 			}
 		}
+		else {
+			if (dlg) {
+				dlg->legs[0].last_gen_cseq = new_cseq;
+				LM_NOTICE("========= setting last_gen_cseq to [%d] for leg [%d]\n", new_cseq, 0);
+				if ( (force_master_cseq_change( msg, new_cseq)) < 0) {
+					LM_ERR("failed to forced new in-dialog cseq\n");
+					goto error;
+				}
+			}
+		}
 
 	} else {
 
@@ -410,6 +420,7 @@ int uac_auth( struct sip_msg *msg, int algmask)
 		 * is already managing the cseq => tell directly the dialog module
 		 * about the cseq increasing */
 		new_cseq = ++dlg->legs[dlg->legs_no[DLG_LEGS_USED]-1].last_gen_cseq;
+		LM_NOTICE("========= incrementing last_gen_cseq to [%d] for leg[%d]\n", new_cseq, dlg->legs_no[DLG_LEGS_USED]-1);
 
 		/* as we expect to have the request already altered (by the dialog 
 		 * module) with a new cseq, to invalidate that change, we do a trick
