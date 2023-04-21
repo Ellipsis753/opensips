@@ -242,14 +242,23 @@ void apply_cseq_decrement(struct cell* t, int type, struct tmcb_params *p)
 	apply_cseq_op(rpl, (int)cseq_req-(int)cseq_rpl);
 }
 
+static int uac_auth_dlg_leg(struct dlg_cell *dlg, str *tag)
+{
+	if (!tag || tag->len == 0)
+		return dlg->legs_no[DLG_LEGS_USED]-1;
+	if (str_match(&dlg->legs[DLG_CALLER_LEG].tag, tag))
+		return DLG_CALLER_LEG;
+	else /* FIXME: shall we check the tag is really it? */
+		return callee_idx(dlg);
+}
+
 int uac_auth( struct sip_msg *msg, int algmask)
 {
 	struct authenticate_body *auth = NULL;
 	str msg_body;
 	static struct authenticate_nc_cnonce auth_nc_cnonce;
 	struct uac_credential *crd;
-	int code, branch;
-	int new_cseq;
+	int code, branch, leg, new_cseq;
 	struct sip_msg *rpl;
 	struct cell *t;
 	struct digest_auth_response response;
@@ -405,8 +414,10 @@ int uac_auth( struct sip_msg *msg, int algmask)
 		}
 		else {
 			if (dlg) {
-				dlg->legs[0].last_gen_cseq = new_cseq;
-				LM_NOTICE("========= setting last_gen_cseq to [%d] for leg [%d]\n", new_cseq, 0);
+				dlg->flags |= DLG_FLAG_CSEQ_ENFORCE;
+				leg = uac_auth_dlg_leg(dlg, &ttag);
+				dlg->legs[leg].last_gen_cseq = new_cseq;
+				LM_NOTICE("========= setting last_gen_cseq to [%d] for leg [%d]\n", new_cseq, leg);
 				if ( (force_master_cseq_change( msg, new_cseq)) < 0) {
 					LM_ERR("failed to forced new in-dialog cseq\n");
 					goto error;
@@ -419,8 +430,9 @@ int uac_auth( struct sip_msg *msg, int algmask)
 		/* this is a sequential with dialog support, so the dialog module
 		 * is already managing the cseq => tell directly the dialog module
 		 * about the cseq increasing */
-		new_cseq = ++dlg->legs[dlg->legs_no[DLG_LEGS_USED]-1].last_gen_cseq;
-		LM_NOTICE("========= incrementing last_gen_cseq to [%d] for leg[%d]\n", new_cseq, dlg->legs_no[DLG_LEGS_USED]-1);
+		leg = uac_auth_dlg_leg(dlg, &ttag);
+		new_cseq = ++dlg->legs[leg].last_gen_cseq;
+		LM_NOTICE("========= incrementing last_gen_cseq to [%d] for leg[%d]\n", new_cseq, leg);
 
 		/* as we expect to have the request already altered (by the dialog 
 		 * module) with a new cseq, to invalidate that change, we do a trick
